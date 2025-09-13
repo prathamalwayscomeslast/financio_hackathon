@@ -8,6 +8,7 @@ import ManageProfile from "./pages/ManageProfile.tsx";
 import ViewAllTransactions from "./pages/ViewAllTransactions.tsx";
 import ProfileSettings from "./pages/ProfileSettings.tsx";
 import AIStudio from "./pages/AIStudio.tsx";
+import FullChatInterface from "./pages/FullChatInterface.tsx";
 // import other pages ...
 
 export const router = createBrowserRouter([
@@ -42,6 +43,10 @@ export const router = createBrowserRouter([
     {
         path: '/app/ai-studio',
         element: <AIStudio />
+    },
+    {
+        path: '/app/chat',
+        element: <FullChatInterface />
     }
 
     // other routes...

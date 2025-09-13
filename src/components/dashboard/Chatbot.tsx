@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const Chatbot: React.FC = () => {
     const [isChatbotOpen, setIsChatbotOpen] = useState(false);
     const [isMinimized, setIsMinimized] = useState(false);
+    const navigate = useNavigate();
 
     const toggleChatbot = () => {
         setIsChatbotOpen(!isChatbotOpen);
@@ -14,6 +16,10 @@ const Chatbot: React.FC = () => {
 
     const minimizeChatbot = () => {
         setIsMinimized(!isMinimized);
+    };
+
+    const maximizeChatbot = () => {
+        navigate('/app/chat');
     };
 
     return (
@@ -34,16 +40,25 @@ const Chatbot: React.FC = () => {
                         <span className="material-symbols-outlined mr-2 text-[var(--primary-color)]">smart_toy</span>
                         AI Assistant
                     </h3>
-                    <div>
+                    <div className="flex items-center gap-1">
                         <button
                             className="p-1 text-gray-500 hover:bg-gray-200 rounded-full focus:outline-none"
                             onClick={minimizeChatbot}
+                            title="Minimize"
                         >
                             <span className="material-symbols-outlined">minimize</span>
                         </button>
                         <button
-                            className="p-1 text-gray-500 hover:bg-gray-200 rounded-full focus:outline-none ml-2"
+                            className="p-1 text-gray-500 hover:bg-gray-200 rounded-full focus:outline-none"
+                            onClick={maximizeChatbot}
+                            title="Maximize to full chat"
+                        >
+                            <span className="material-symbols-outlined">open_in_full</span>
+                        </button>
+                        <button
+                            className="p-1 text-gray-500 hover:bg-gray-200 rounded-full focus:outline-none"
                             onClick={closeChatbot}
+                            title="Close"
                         >
                             <span className="material-symbols-outlined">close</span>
                         </button>
