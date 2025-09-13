@@ -5,6 +5,7 @@ import SummaryCards from '../components/dashboard/SummaryCards';
 import Charts from '../components/dashboard/Charts';
 import TransactionsTable from '../components/dashboard/TransactionsTable';
 import Chatbot from '../components/dashboard/Chatbot';
+import FormManager from "../components/dashboard/FormManager.tsx";
 
 const Dashboard: React.FC = () => {
     return (
@@ -19,6 +20,8 @@ const Dashboard: React.FC = () => {
                         <h1 className="text-3xl font-bold text-[var(--text-primary)]">Dashboard</h1>
                         <p className="text-gray-500 mt-1">Welcome back, here's your comprehensive financial overview.</p>
                     </div>
+
+                    <FormManager />
 
                     <SummaryCards />
 
