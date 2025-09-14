@@ -1,13 +1,18 @@
 import React, { useState } from 'react';
-import type {TransactionFormData} from '../../types/forms';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useUser } from '../../context/UserContext';
+import apiClient from '../../api';
+import type { TransactionFormData } from '../../types/forms';
 
 interface TransactionFormProps {
-    onSubmit: (data: TransactionFormData) => Promise<void>;
     onClose: () => void;
     isOpen: boolean;
 }
 
-const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, onClose, isOpen }) => {
+const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, isOpen }) => {
+    const { userId } = useUser();
+    const queryClient = useQueryClient();
+
     const [formData, setFormData] = useState<TransactionFormData>({
         date: new Date().toISOString().split('T')[0],
         description: '',
@@ -16,13 +21,41 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, onClose, is
         type: 'expense'
     });
 
-    const [isSubmitting, setIsSubmitting] = useState(false);
-
     const categories = [
         'salary', 'freelance', 'bonus', 'groceries', 'utilities', 'rent',
         'dining', 'shopping', 'transportation', 'healthcare', 'entertainment',
         'education'
     ];
+
+    // API mutation for creating transaction
+    const mutation = useMutation({
+        mutationFn: async (data: TransactionFormData) => {
+            if (!userId) throw new Error('User not logged in');
+            return await apiClient.post('/api/v1/transactions', {
+                ...data,
+                user_id: userId
+            });
+        },
+        onSuccess: () => {
+            // Refresh dashboard data
+            queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+            queryClient.invalidateQueries({ queryKey: ['recent-transactions'] });
+            queryClient.invalidateQueries({ queryKey: ['allTransactions'] });
+
+            // Close modal and reset form
+            onClose();
+            setFormData({
+                date: new Date().toISOString().split('T')[0],
+                description: '',
+                category: '',
+                amount: 0,
+                type: 'expense'
+            });
+        },
+        onError: (error) => {
+            console.error('Error adding transaction:', error);
+        }
+    });
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -34,26 +67,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, onClose, is
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setIsSubmitting(true);
 
-        try {
-            await onSubmit({
-                ...formData,
-                amount: formData.type === 'expense' ? -Math.abs(formData.amount) : Math.abs(formData.amount)
-            });
-            onClose();
-            setFormData({
-                date: new Date().toISOString().split('T')[0],
-                description: '',
-                category: '',
-                amount: 0,
-                type: 'expense'
-            });
-        } catch (error) {
-            console.error('Error adding transaction:', error);
-        } finally {
-            setIsSubmitting(false);
-        }
+        if (!userId) return;
+
+        // Submit to API
+        mutation.mutate({
+            ...formData,
+            amount: formData.type === 'expense' ? -Math.abs(formData.amount) : Math.abs(formData.amount)
+        });
     };
 
     if (!isOpen) return null;
@@ -105,7 +126,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, onClose, is
                         >
                             <option value="">Select category</option>
                             {categories.map(cat => (
-                                <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
+                                <option key={cat} value={cat}>
+                                    {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                                </option>
                             ))}
                         </select>
                     </div>
@@ -142,19 +165,27 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, onClose, is
                         <button
                             type="button"
                             onClick={onClose}
-                            className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+                            disabled={mutation.isPending}
+                            className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
-                            disabled={isSubmitting}
+                            disabled={mutation.isPending || !userId}
                             className="flex-1 px-4 py-2 bg-[var(--primary-color)] text-white rounded-md hover:bg-opacity-90 transition-colors disabled:opacity-50"
                         >
-                            {isSubmitting ? 'Adding...' : 'Add Transaction'}
+                            {mutation.isPending ? 'Adding...' : 'Add Transaction'}
                         </button>
                     </div>
                 </form>
+
+                {/* Success Message (optional) */}
+                {mutation.isSuccess && (
+                    <div className="mt-4 p-3 bg-green-100 text-green-800 rounded-md text-sm">
+                        ✅ Transaction added successfully!
+                    </div>
+                )}
             </div>
         </div>
     );

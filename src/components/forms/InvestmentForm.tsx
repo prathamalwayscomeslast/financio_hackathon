@@ -1,13 +1,18 @@
 import React, { useState } from 'react';
-import type {InvestmentFormData} from '../../types/forms';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useUser } from '../../context/UserContext';
+import apiClient from '../../api';
+import type { InvestmentFormData } from '../../types/forms';
 
 interface InvestmentFormProps {
-    onSubmit: (data: InvestmentFormData) => Promise<void>;
     onClose: () => void;
     isOpen: boolean;
 }
 
-const InvestmentForm: React.FC<InvestmentFormProps> = ({ onSubmit, onClose, isOpen }) => {
+const InvestmentForm: React.FC<InvestmentFormProps> = ({ onClose, isOpen }) => {
+    const { userId } = useUser();
+    const queryClient = useQueryClient();
+
     const [formData, setFormData] = useState<InvestmentFormData>({
         name: '',
         ticker: '',
@@ -16,9 +21,31 @@ const InvestmentForm: React.FC<InvestmentFormProps> = ({ onSubmit, onClose, isOp
         current_value: 0
     });
 
-    const [isSubmitting, setIsSubmitting] = useState(false);
-
     const investmentTypes = ['stock', 'mutual_fund', 'etf', 'bond', 'crypto'];
+
+    // API mutation for creating investment
+    const mutation = useMutation({
+        mutationFn: async (data: InvestmentFormData) => {
+            if (!userId) throw new Error('User not logged in');
+            return await apiClient.post('/api/v1/investments', {
+                ...data,
+                user_id: userId,
+                purchase_date: new Date().toISOString().split('T')[0] // Add current date as purchase date
+            });
+        },
+        onSuccess: () => {
+            // Refresh dashboard data using correct syntax
+            queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+            queryClient.invalidateQueries({ queryKey: ['allInvestments'] });
+
+            // Close modal and reset form
+            onClose();
+            setFormData({ name: '', ticker: '', type: '', quantity: 0, current_value: 0 });
+        },
+        onError: (error) => {
+            console.error('Error adding investment:', error);
+        }
+    });
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -30,17 +57,11 @@ const InvestmentForm: React.FC<InvestmentFormProps> = ({ onSubmit, onClose, isOp
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setIsSubmitting(true);
 
-        try {
-            await onSubmit(formData);
-            onClose();
-            setFormData({ name: '', ticker: '', type: '', quantity: 0, current_value: 0 });
-        } catch (error) {
-            console.error('Error adding investment:', error);
-        } finally {
-            setIsSubmitting(false);
-        }
+        if (!userId) return;
+
+        // Submit to API
+        mutation.mutate(formData);
     };
 
     if (!isOpen) return null;
@@ -134,19 +155,27 @@ const InvestmentForm: React.FC<InvestmentFormProps> = ({ onSubmit, onClose, isOp
                         <button
                             type="button"
                             onClick={onClose}
-                            className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+                            disabled={mutation.isPending}
+                            className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
-                            disabled={isSubmitting}
+                            disabled={mutation.isPending || !userId}
                             className="flex-1 px-4 py-2 bg-[var(--primary-color)] text-white rounded-md hover:bg-opacity-90 transition-colors disabled:opacity-50"
                         >
-                            {isSubmitting ? 'Adding...' : 'Add Investment'}
+                            {mutation.isPending ? 'Adding...' : 'Add Investment'}
                         </button>
                     </div>
                 </form>
+
+                {/* Success Message (optional) */}
+                {mutation.isSuccess && (
+                    <div className="mt-4 p-3 bg-green-100 text-green-800 rounded-md text-sm">
+                        ✅ Investment added successfully!
+                    </div>
+                )}
             </div>
         </div>
     );

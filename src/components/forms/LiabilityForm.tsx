@@ -1,25 +1,51 @@
 import React, { useState } from 'react';
-import type {LiabilityFormData} from '../../types/forms';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useUser } from '../../context/UserContext';
+import apiClient from '../../api';
+import type { LiabilityFormData } from '../../types/forms';
 
 interface LiabilityFormProps {
-    onSubmit: (data: LiabilityFormData) => Promise<void>;
     onClose: () => void;
     isOpen: boolean;
 }
 
-const LiabilityForm: React.FC<LiabilityFormProps> = ({ onSubmit, onClose, isOpen }) => {
+const LiabilityForm: React.FC<LiabilityFormProps> = ({ onClose, isOpen }) => {
+    const { userId } = useUser();
+    const queryClient = useQueryClient();
+
     const [formData, setFormData] = useState<LiabilityFormData>({
         name: '',
         type: '',
         outstanding_balance: 0
     });
 
-    const [isSubmitting, setIsSubmitting] = useState(false);
-
     const liabilityTypes = [
         'student_loan', 'credit_card', 'personal_loan', 'mortgage',
         'auto_loan', 'business_loan', 'medical_debt', 'other'
     ];
+
+    // API mutation for creating liability
+    const mutation = useMutation({
+        mutationFn: async (data: LiabilityFormData) => {
+            if (!userId) throw new Error('User not logged in');
+            return await apiClient.post('/api/v1/liabilities', {
+                ...data,
+                user_id: userId
+            });
+        },
+        onSuccess: () => {
+            // Refresh dashboard data using correct syntax
+            queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+            queryClient.invalidateQueries({ queryKey: ['allLiabilities'] });
+
+            // Close modal and reset form
+            onClose();
+            setFormData({ name: '', type: '', outstanding_balance: 0 });
+        },
+        onError: (error) => {
+            console.error('Error adding liability:', error);
+        }
+    });
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -31,17 +57,11 @@ const LiabilityForm: React.FC<LiabilityFormProps> = ({ onSubmit, onClose, isOpen
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setIsSubmitting(true);
 
-        try {
-            await onSubmit(formData);
-            onClose();
-            setFormData({ name: '', type: '', outstanding_balance: 0 });
-        } catch (error) {
-            console.error('Error adding liability:', error);
-        } finally {
-            setIsSubmitting(false);
-        }
+        if (!userId) return;
+
+        // Submit to API
+        mutation.mutate(formData);
     };
 
     if (!isOpen) return null;
@@ -110,19 +130,27 @@ const LiabilityForm: React.FC<LiabilityFormProps> = ({ onSubmit, onClose, isOpen
                         <button
                             type="button"
                             onClick={onClose}
-                            className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+                            disabled={mutation.isPending}
+                            className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
-                            disabled={isSubmitting}
+                            disabled={mutation.isPending || !userId}
                             className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
                         >
-                            {isSubmitting ? 'Adding...' : 'Add Liability'}
+                            {mutation.isPending ? 'Adding...' : 'Add Liability'}
                         </button>
                     </div>
                 </form>
+
+                {/* Success Message (optional) */}
+                {mutation.isSuccess && (
+                    <div className="mt-4 p-3 bg-green-100 text-green-800 rounded-md text-sm">
+                        ✅ Liability added successfully!
+                    </div>
+                )}
             </div>
         </div>
     );
