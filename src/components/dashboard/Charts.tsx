@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
+import { useDashboardCharts } from '../../api/hooks/useDashboardApi';
 
 declare global {
     interface Window {
@@ -6,89 +7,33 @@ declare global {
     }
 }
 
-// 🎯 DEFINE PROPER TYPESCRIPT INTERFACES
-interface ChartData {
-    spending_chart: {
-        labels: string[];
-        data: number[];
-    };
-    savings_chart: {
-        labels: string[];
-        data: number[];
-    };
-    investment_chart: {
-        labels: string[];
-        data: number[];
-    };
-    allocation_chart: {
-        labels: string[];
-        data: number[];
-    };
-    period: string;
-}
-
-// 🔥 ACCEPT USERID AS PROP - COMPLETELY DYNAMIC!
-interface ChartsProps {
-    userId: string;
-}
-
-const Charts: React.FC<ChartsProps> = ({ userId }) => {
-    // ✅ Properly typed useState
-    const [chartsData, setChartsData] = useState<ChartData | null>(null);
-    const [loading, setLoading] = useState<boolean>(true);
-
-    // 🔥 FETCH DATA DYNAMICALLY BASED ON PASSED USERID
-    useEffect(() => {
-        const fetchChartsData = async () => {
-            if (!userId) return;
-
-            try {
-                setLoading(true);
-                const response = await fetch(`/api/v1/dashboard/charts?user_id=${userId}&period=6months`);
-
-                if (response.ok) {
-                    const data: ChartData = await response.json();
-                    setChartsData(data);
-                } else {
-                    console.error('Failed to fetch charts data');
-                }
-            } catch (error) {
-                console.error('Error fetching charts data:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchChartsData();
-    }, [userId]); // ✅ Re-fetch when userId changes
+const Charts: React.FC = () => {
+    const { data: chartsData, isLoading, error } = useDashboardCharts('6months');
+    const chartsRef = useRef<{ [key: string]: any }>({});
 
     useEffect(() => {
         // Load Chart.js
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
-        script.onload = () => {
-            if (chartsData) {
-                initializeCharts();
-            }
-        };
-        document.head.appendChild(script);
+        if (!window.Chart) {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+            script.onload = () => {
+                if (chartsData) {
+                    initializeCharts();
+                }
+            };
+            document.head.appendChild(script);
+        } else if (chartsData) {
+            initializeCharts();
+        }
 
         return () => {
             // Cleanup existing charts
-            const chartIds = ['spendingChart', 'savingsChart', 'investmentChart', 'allocationPieChart'];
-            chartIds.forEach(id => {
-                const canvas = document.getElementById(id) as HTMLCanvasElement;
-                if (canvas && window.Chart) {
-                    const existingChart = window.Chart.getChart(canvas);
-                    if (existingChart) {
-                        existingChart.destroy();
-                    }
+            Object.values(chartsRef.current).forEach(chart => {
+                if (chart && typeof chart.destroy === 'function') {
+                    chart.destroy();
                 }
             });
-
-            if (document.head.contains(script)) {
-                document.head.removeChild(script);
-            }
+            chartsRef.current = {};
         };
     }, [chartsData]);
 
@@ -97,10 +42,18 @@ const Charts: React.FC<ChartsProps> = ({ userId }) => {
 
         const { Chart } = window;
 
-        // Spending Chart - USE DYNAMIC DATA
-        const spendingCtx = (document.getElementById('spendingChart') as HTMLCanvasElement)?.getContext('2d');
+        // Cleanup existing charts
+        Object.values(chartsRef.current).forEach(chart => {
+            if (chart && typeof chart.destroy === 'function') {
+                chart.destroy();
+            }
+        });
+        chartsRef.current = {};
+
+        // Spending Chart
+        const spendingCtx = document.getElementById('spendingChart') as HTMLCanvasElement;
         if (spendingCtx) {
-            new Chart(spendingCtx, {
+            chartsRef.current.spending = new Chart(spendingCtx.getContext('2d'), {
                 type: 'bar',
                 data: {
                     labels: chartsData.spending_chart.labels,
@@ -116,17 +69,31 @@ const Charts: React.FC<ChartsProps> = ({ userId }) => {
                     responsive: true,
                     scales: {
                         y: {
-                            beginAtZero: true
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value: any) {
+                                    return '$' + value.toLocaleString();
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context: any) {
+                                    return context.dataset.label + ': $' + context.raw.toLocaleString();
+                                }
+                            }
                         }
                     }
                 }
             });
         }
 
-        // Savings Chart - USE DYNAMIC DATA
-        const savingsCtx = (document.getElementById('savingsChart') as HTMLCanvasElement)?.getContext('2d');
+        // Savings Chart
+        const savingsCtx = document.getElementById('savingsChart') as HTMLCanvasElement;
         if (savingsCtx) {
-            new Chart(savingsCtx, {
+            chartsRef.current.savings = new Chart(savingsCtx.getContext('2d'), {
                 type: 'line',
                 data: {
                     labels: chartsData.savings_chart.labels,
@@ -135,19 +102,38 @@ const Charts: React.FC<ChartsProps> = ({ userId }) => {
                         data: chartsData.savings_chart.data,
                         fill: false,
                         borderColor: 'rgb(7, 136, 54)',
+                        backgroundColor: 'rgba(7, 136, 54, 0.1)',
                         tension: 0.1
                     }]
                 },
                 options: {
-                    responsive: true
+                    responsive: true,
+                    scales: {
+                        y: {
+                            ticks: {
+                                callback: function(value: any) {
+                                    return '$' + value.toLocaleString();
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context: any) {
+                                    return context.dataset.label + ': $' + context.raw.toLocaleString();
+                                }
+                            }
+                        }
+                    }
                 }
             });
         }
 
-        // Investment Chart - USE DYNAMIC DATA
-        const investmentCtx = (document.getElementById('investmentChart') as HTMLCanvasElement)?.getContext('2d');
+        // Investment Chart
+        const investmentCtx = document.getElementById('investmentChart') as HTMLCanvasElement;
         if (investmentCtx) {
-            new Chart(investmentCtx, {
+            chartsRef.current.investment = new Chart(investmentCtx.getContext('2d'), {
                 type: 'line',
                 data: {
                     labels: chartsData.investment_chart.labels,
@@ -155,21 +141,39 @@ const Charts: React.FC<ChartsProps> = ({ userId }) => {
                         label: 'Portfolio Value',
                         data: chartsData.investment_chart.data,
                         borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.1)',
                         tension: 0.1,
-                        fill: true,
-                        backgroundColor: 'rgba(75, 192, 192, 0.1)'
+                        fill: true
                     }]
                 },
                 options: {
-                    responsive: true
+                    responsive: true,
+                    scales: {
+                        y: {
+                            ticks: {
+                                callback: function(value: any) {
+                                    return '$' + value.toLocaleString();
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context: any) {
+                                    return context.dataset.label + ': $' + context.raw.toLocaleString();
+                                }
+                            }
+                        }
+                    }
                 }
             });
         }
 
-        // Allocation Pie Chart - USE DYNAMIC DATA
-        const allocationCtx = (document.getElementById('allocationPieChart') as HTMLCanvasElement)?.getContext('2d');
+        // Allocation Pie Chart
+        const allocationCtx = document.getElementById('allocationPieChart') as HTMLCanvasElement;
         if (allocationCtx) {
-            new Chart(allocationCtx, {
+            chartsRef.current.allocation = new Chart(allocationCtx.getContext('2d'), {
                 type: 'pie',
                 data: {
                     labels: chartsData.allocation_chart.labels,
@@ -180,7 +184,9 @@ const Charts: React.FC<ChartsProps> = ({ userId }) => {
                             'rgba(255, 99, 132, 0.7)',
                             'rgba(54, 162, 235, 0.7)',
                             'rgba(255, 206, 86, 0.7)',
-                            'rgba(75, 192, 192, 0.7)'
+                            'rgba(75, 192, 192, 0.7)',
+                            'rgba(153, 102, 255, 0.7)',
+                            'rgba(255, 159, 64, 0.7)'
                         ],
                         hoverOffset: 4
                     }]
@@ -190,6 +196,15 @@ const Charts: React.FC<ChartsProps> = ({ userId }) => {
                     plugins: {
                         legend: {
                             position: 'right',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context: any) {
+                                    const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0);
+                                    const percentage = ((context.raw / total) * 100).toFixed(1);
+                                    return context.label + ': $' + context.raw.toLocaleString() + ' (' + percentage + '%)';
+                                }
+                            }
                         }
                     }
                 }
@@ -198,7 +213,7 @@ const Charts: React.FC<ChartsProps> = ({ userId }) => {
     };
 
     // Loading state
-    if (loading) {
+    if (isLoading) {
         return (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {[1, 2, 3, 4].map(i => (
@@ -211,18 +226,28 @@ const Charts: React.FC<ChartsProps> = ({ userId }) => {
         );
     }
 
-    // No data state
-    if (!chartsData) {
+    // Error state
+    if (error) {
         return (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="summary-card col-span-full text-center py-12">
-                    <p className="text-gray-500">No chart data available for this user!</p>
+                    <p className="text-red-600">Error loading charts. Please try again later.</p>
                 </div>
             </div>
         );
     }
 
-    // Keep your existing JSX exactly the same
+    // No data state
+    if (!chartsData) {
+        return (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="summary-card col-span-full text-center py-12">
+                    <p className="text-gray-500">No chart data available. Add some financial data to see insights.</p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="summary-card col-span-1">

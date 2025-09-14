@@ -1,55 +1,159 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { useUser } from '../context/UserContext';
+import { useMutation } from '@tanstack/react-query';
+import apiClient from '../api';
+import MarkdownMessage from '../components/common/MarkdownMessage';
 
 interface Message {
+    id: string;
     sender: 'ai' | 'user';
     text: string;
-    timestamp?: string;
+    timestamp: Date;
 }
 
+interface ChatRequest {
+    user_id: string;
+    question: string;
+}
+
+interface ChatResponse {
+    user_id: string;
+    question: string;
+    answer: string;
+}
+
+const sendChatMessage = async (data: ChatRequest): Promise<ChatResponse> => {
+    const response = await apiClient.post('/api/v1/ai/chat', data);
+    return response.data;
+};
+
 const FullChatInterface: React.FC = () => {
-    const [messages, setMessages] = useState<Message[]>([
-        {
-            sender: 'ai',
-            text: 'Hi Sarah, how can I help you today?'
-        },
-        {
-            sender: 'user',
-            text: 'What was my total spending last month?'
-        },
-        {
-            sender: 'ai',
-            text: 'Your total spending last month was $2,350. Would you like a breakdown by category?'
-        }
-    ]);
-
+    const location = useLocation();
+    const { userId, user } = useUser();
     const [input, setInput] = useState('');
+    const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    const handleSend = () => {
-        if (!input.trim()) return;
+    // Initialize messages from location state or default
+    const [messages, setMessages] = useState<Message[]>(() => {
+        if (location.state?.messages) {
+            return location.state.messages;
+        }
+        return [
+            {
+                id: '1',
+                sender: 'ai',
+                text: `# Welcome to FinAI! 👋
 
-        const newMessage: Message = {
+Hi **${user?.displayName || 'there'}**! I'm your personal financial AI assistant powered by advanced AI technology.
+
+## What I can help you with:
+
+### 📊 **Financial Analysis**
+- Analyze your spending patterns and trends
+- Review your investment portfolio performance
+- Track your financial goals and progress
+
+### 💡 **Smart Recommendations**
+- Personalized budgeting advice
+- Investment optimization suggestions
+- Debt management strategies
+
+### 📈 **Real-time Insights**
+- Current market analysis
+- Portfolio risk assessment
+- Savings opportunities
+
+### 🔍 **Data-driven Answers**
+I have access to your real financial data and can provide specific insights about:
+- Your transactions and spending categories
+- Asset allocation and investment performance
+- Credit score trends and EPF balance
+- Monthly/yearly financial summaries
+
+---
+
+**Ready to get started?** Ask me anything about your finances! For example:
+- *"What did I spend on groceries last month?"*
+- *"How is my investment portfolio performing?"*
+- *"What are my biggest spending categories?"*
+- *"Give me a financial health checkup"*`,
+                timestamp: new Date()
+            }
+        ];
+    });
+
+    const chatMutation = useMutation({
+        mutationFn: sendChatMessage,
+        onSuccess: (response) => {
+            const aiMessage: Message = {
+                id: Date.now().toString(),
+                sender: 'ai',
+                text: response.answer,
+                timestamp: new Date()
+            };
+            setMessages(prev => [...prev, aiMessage]);
+        },
+        onError: (error: any) => {
+            console.error('Chat error:', error);
+            const errorMessage: Message = {
+                id: Date.now().toString(),
+                sender: 'ai',
+                text: '⚠️ **I apologize, but I encountered an error** while processing your request.\n\nThis could be due to:\n- Temporary server issues\n- Network connectivity problems\n- High system load\n\n**Please try again** in a moment, or contact support if the issue persists.',
+                timestamp: new Date()
+            };
+            setMessages(prev => [...prev, errorMessage]);
+        }
+    });
+
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
+
+    useEffect(() => {
+        scrollToBottom();
+    }, [messages]);
+
+    const handleSendMessage = () => {
+        const textToSend = input.trim();
+        if (!textToSend || !userId || chatMutation.isPending) return;
+
+        const userMessage: Message = {
+            id: Date.now().toString(),
             sender: 'user',
-            text: input.trim()
+            text: textToSend,
+            timestamp: new Date()
         };
 
-        setMessages(prev => [...prev, newMessage]);
-        setInput('');
+        setMessages(prev => [...prev, userMessage]);
 
-        // Simulate AI response (replace with actual AI integration)
-        setTimeout(() => {
-            const aiResponse: Message = {
-                sender: 'ai',
-                text: 'I understand your question. Let me analyze your financial data and provide you with a detailed response.'
-            };
-            setMessages(prev => [...prev, aiResponse]);
-        }, 1000);
+        // Send to AI API
+        chatMutation.mutate({
+            user_id: userId,
+            question: textToSend
+        });
+
+        setInput('');
     };
 
     const handleKeyPress = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') {
-            handleSend();
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSendMessage();
         }
+    };
+
+    const quickQuestions = [
+        "What's my spending this month?",
+        "How is my investment portfolio?",
+        "Show me my financial summary",
+        "What are my biggest expenses?",
+        "Give me budgeting advice",
+        "Analyze my financial health"
+    ];
+
+    const handleQuickQuestion = (question: string) => {
+        setInput(question);
     };
 
     return (
@@ -59,7 +163,7 @@ const FullChatInterface: React.FC = () => {
         >
             <div className="flex h-full grow flex-col">
                 {/* Header */}
-                <header className="flex items-center justify-between whitespace-nowrap border-b border-solid border-gray-200 px-10 py-4 bg-white">
+                <header className="flex items-center justify-between whitespace-nowrap border-b border-solid border-gray-200 px-10 py-4 bg-white sticky top-0 z-10 shadow-sm">
                     <Link to="/app/dashboard">
                         <div className="flex items-center gap-4 text-gray-800">
                             <svg className="h-8 w-8 text-[var(--primary-color)]" fill="none" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
@@ -69,90 +173,159 @@ const FullChatInterface: React.FC = () => {
                             <h2 className="text-gray-800 text-xl font-bold leading-tight tracking-[-0.015em]">Financio</h2>
                         </div>
                     </Link>
-                    <div className="flex flex-1 justify-center gap-8">
-                        <nav className="flex items-center gap-6"></nav>
-                    </div>
                     <div className="flex items-center gap-4">
+                        {chatMutation.isPending && (
+                            <div className="flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">
+                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                                AI is analyzing your data...
+                            </div>
+                        )}
                         <Link to="/app/profile">
-                            <div
-                                className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10"
-                                style={{backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuAFClwHEm1LWClQJPmxElMqS4gQw-3d2CQWDFUIpVC8xMrTVIOzLST8p58YFAtEkHj8orgnuTRZBYSLIPJxqIoS-wcKSicLZa9lxI3vxFTT6Y1COrvO82F1wpfSHM_iQbdPVgUNErvPdP0aHC9h927H15SuzH6Yj1jqKBHMVnLwF4RCv-kcn5FVEPPGqwQjlGIvUSn6xO5dcBY86baVbttjVF34FAziWy8n8jRj-f7DjhZiicmL2A_y8XfXvwRJ4jpMr9Lvo2m_ZBgb")'}}
-                            ></div>
+                            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 text-white rounded-full flex items-center justify-center font-semibold shadow-md">
+                                {user?.displayName?.charAt(0)?.toUpperCase() || 'U'}
+                            </div>
                         </Link>
                     </div>
                 </header>
 
                 {/* Main Chat Interface */}
-                <main className="flex-1 flex justify-center py-8 px-4">
+                <main className="flex-1 flex justify-center py-8 px-4 min-h-0">
                     <div className="w-full max-w-4xl flex flex-col h-full">
                         {/* Chat Header */}
                         <div className="text-center mb-8">
-                            <h1 className="text-4xl font-bold text-gray-800 tracking-tight">Chat with FinAI</h1>
+                            <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent tracking-tight">Chat with FinAI</h1>
                             <p className="text-gray-500 mt-2 max-w-2xl mx-auto">
-                                Ask me anything about your finances. I can help you understand your spending, track your progress towards goals, and suggest ways to improve your financial health.
+                                Your personal AI financial assistant with access to your real financial data.
+                                Get personalized insights, analysis, and recommendations powered by advanced AI.
                             </p>
                         </div>
 
+                        {/* Quick Questions */}
+                        {messages.length === 1 && (
+                            <div className="mb-6 p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
+                                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                                    <span className="material-symbols-outlined mr-2 text-blue-600">lightbulb</span>
+                                    Quick Questions to Get Started
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {quickQuestions.map((question, index) => (
+                                        <button
+                                            key={index}
+                                            className="p-3 text-left border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 transition-all duration-200 text-sm"
+                                            onClick={() => handleQuickQuestion(question)}
+                                            disabled={chatMutation.isPending}
+                                        >
+                                            <span className="text-gray-700">{question}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         {/* Chat Messages */}
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-white rounded-lg shadow-sm">
-                            {messages.map((message, index) => (
+                        <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-white rounded-lg shadow-sm border border-gray-200 min-h-[500px]">
+                            {messages.map((message) => (
                                 <div
-                                    key={index}
+                                    key={message.id}
                                     className={`flex items-start gap-4 ${message.sender === 'user' ? 'justify-end' : ''}`}
                                 >
                                     {message.sender === 'ai' && (
-                                        <div
-                                            className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-10 h-10 shrink-0"
-                                            style={{backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuA2sYKshmcIRpGkPlV1vFtezu_YsiMbtJohpPLFzcjTnQp2uG114KJBwMN46_eIjaX32TfVq4N8mrx0b3J59eodgfUa3TXTnoCwm5Ik-cgJX3YpCl7cBO1PrkBBT9mqPhaVDKT9tgntDzGtvCm52m1U6PgYxtO3i3HWfEhXr-4VczGZT06IhjxUjFUffi2FmvBvNl2obQ0J5TL4b6CUQymQP03kFFPaADb7C01CMKrsehMPDtxJ-12q4uaHK9q7GmVB-U3n_hHScTE6")'}}
-                                        ></div>
+                                        <div className="bg-gradient-to-br from-blue-500 to-purple-600 text-white rounded-full w-10 h-10 flex items-center justify-center shrink-0 shadow-md">
+                                            <span className="material-symbols-outlined text-lg">smart_toy</span>
+                                        </div>
                                     )}
 
                                     <div className={`flex flex-col ${message.sender === 'user' ? 'items-end' : 'items-start'}`}>
-                                        <p className="text-gray-500 text-sm font-medium mb-1">
-                                            {message.sender === 'user' ? 'Sarah' : 'FinAdvisor'}
+                                        <p className="text-gray-500 text-xs font-medium mb-1 px-1">
+                                            {message.sender === 'user' ? (user?.displayName || 'You') : 'FinAI Assistant'}
                                         </p>
-                                        <div className={`rounded-lg px-4 py-3 shadow-sm max-w-md ${
+                                        <div className={`rounded-lg px-4 py-3 shadow-sm max-w-3xl ${
                                             message.sender === 'user'
-                                                ? 'bg-[var(--primary-color)] text-white rounded-tr-none'
-                                                : 'bg-white rounded-tl-none text-gray-800 border'
+                                                ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-tr-none'
+                                                : 'bg-white rounded-tl-none text-gray-800 border border-gray-200'
                                         }`}>
-                                            <p className="text-base" dangerouslySetInnerHTML={{
-                                                __html: message.text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                                            }}></p>
+                                            {message.sender === 'ai' ? (
+                                                <MarkdownMessage
+                                                    content={message.text}
+                                                    className="text-gray-800"
+                                                />
+                                            ) : (
+                                                <p className="text-base whitespace-pre-wrap">{message.text}</p>
+                                            )}
+                                            <p className={`text-xs mt-2 ${message.sender === 'user' ? 'text-blue-100' : 'text-gray-400'}`}>
+                                                {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </p>
                                         </div>
                                     </div>
 
                                     {message.sender === 'user' && (
-                                        <div
-                                            className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-10 h-10 shrink-0"
-                                            style={{backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuBUW21iJ1Z85tLkOUZQQx5dYfGe3qDKqN4ffXDXUMpsC4C-DjYiEuUHiMY5nbSchGawKeen7ownYJFcoI8HUZfSsX2fmkHuycmhlxw-xHPlaf5GBK2XumlJlt5A6yg5MtllV5JUmLqQDS_TJFTubHlXpTzoy4yP_qyiUqfIPbp37KP6vLrTMoilrN7eu1WP8NIhTRUPDc5s1ENTg_5ZBP_gp1DienOW9zQEq77jWFO7Fc7Vox8jUcIIlIgop8A5eN6SEz-c7o8wil6C")'}}
-                                        ></div>
+                                        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 text-white rounded-full flex items-center justify-center shrink-0 font-semibold shadow-md">
+                                            {user?.displayName?.charAt(0)?.toUpperCase() || 'U'}
+                                        </div>
                                     )}
                                 </div>
                             ))}
+
+                            {/* AI Loading State */}
+                            {chatMutation.isPending && (
+                                <div className="flex items-start gap-4">
+                                    <div className="bg-gradient-to-br from-blue-500 to-purple-600 text-white rounded-full w-10 h-10 flex items-center justify-center shadow-md">
+                                        <span className="material-symbols-outlined text-lg">smart_toy</span>
+                                    </div>
+                                    <div className="flex flex-col items-start">
+                                        <p className="text-gray-500 text-xs font-medium mb-1 px-1">FinAI Assistant</p>
+                                        <div className="bg-white rounded-lg rounded-tl-none px-4 py-3 border border-gray-200 shadow-sm">
+                                            <div className="flex items-center gap-3">
+                                                <div className="flex gap-1">
+                                                    <div className="w-3 h-3 bg-blue-500 rounded-full animate-bounce"></div>
+                                                    <div className="w-3 h-3 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                                                    <div className="w-3 h-3 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                                                </div>
+                                                <span className="text-sm text-gray-600">Analyzing your financial data...</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div ref={messagesEndRef} />
                         </div>
 
                         {/* Chat Input */}
-                        <div className="mt-auto bg-white border-t border-gray-200 p-4 sticky bottom-0 rounded-b-lg">
-                            <div className="relative">
-                                <input
-                                    className="w-full rounded-full border-gray-300 focus:ring-2 focus:ring-[var(--primary-color)] focus:border-[var(--primary-color)] transition pl-5 pr-20 py-3 text-base"
-                                    placeholder="Ask me anything..."
-                                    type="text"
-                                    value={input}
-                                    onChange={(e) => setInput(e.target.value)}
-                                    onKeyPress={handleKeyPress}
-                                />
-                                <div className="absolute inset-y-0 right-0 flex items-center pr-4 gap-2">
-                                    <button className="text-gray-500 hover:text-[var(--primary-color)] transition-colors">
-                                        <span className="material-symbols-outlined text-2xl">mic</span>
-                                    </button>
-                                    <button
-                                        onClick={handleSend}
-                                        className="bg-[var(--primary-color)] text-white rounded-full p-2 hover:bg-opacity-90 transition-colors"
-                                    >
-                                        <span className="material-symbols-outlined text-2xl">send</span>
-                                    </button>
+                        <div className="mt-6 bg-white border border-gray-200 rounded-lg shadow-sm sticky bottom-0">
+                            <div className="p-4">
+                                {!userId && (
+                                    <div className="mb-4 p-3 bg-yellow-100 text-yellow-800 rounded-md text-sm flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-lg">warning</span>
+                                        Please sign in to chat with your AI financial assistant.
+                                    </div>
+                                )}
+                                <div className="relative">
+                                    <textarea
+                                        className="w-full rounded-lg border-gray-300 focus:ring-2 focus:ring-[var(--primary-color)] focus:border-[var(--primary-color)] transition pl-5 pr-24 py-3 text-base resize-none min-h-[60px] max-h-32"
+                                        placeholder="Ask me about your finances, investments, spending patterns, or any financial questions..."
+                                        value={input}
+                                        onChange={(e) => setInput(e.target.value)}
+                                        onKeyPress={handleKeyPress}
+                                        disabled={chatMutation.isPending || !userId}
+                                        rows={1}
+                                    />
+                                    <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                                        <button
+                                            className="text-gray-400 hover:text-[var(--primary-color)] transition-colors p-1 rounded"
+                                            title="Voice input (coming soon)"
+                                            disabled
+                                        >
+                                            <span className="material-symbols-outlined text-xl">mic</span>
+                                        </button>
+                                        <button
+                                            onClick={handleSendMessage}
+                                            className="bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-full p-2 hover:from-blue-600 hover:to-purple-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
+                                            disabled={chatMutation.isPending || !input.trim() || !userId}
+                                        >
+                                            <span className="material-symbols-outlined text-xl">send</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>

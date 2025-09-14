@@ -6,26 +6,65 @@ import {
     signInWithPopup,
     signInWithEmailAndPassword,
 } from '../firebase';
+import { useCreateUser } from '../api/hooks/useUserApi';
 
 const Login: React.FC = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
 
-    const handleGoogleSignIn = () => {
-        signInWithPopup(auth, googleProvider)
-            .then(() => navigate('/app/dashboard'))
-            .catch((err: any) => setError(err.message));
+    // Hook for creating user in database
+    const createUserMutation = useCreateUser();
+
+    // Helper function to ensure user exists in database
+    const ensureUserInDatabase = async (firebaseUser: any) => {
+        try {
+            await createUserMutation.mutateAsync({
+                user_id: firebaseUser.uid,
+                name: firebaseUser.displayName || firebaseUser.email || 'User',
+            });
+        } catch (error) {
+            // User might already exist - that's fine
+            console.log('User already exists in database or creation failed:', error);
+        }
+    };
+
+    const handleGoogleSignIn = async () => {
+        setIsLoading(true);
+        setError(null);
+
+        try {
+            const result = await signInWithPopup(auth, googleProvider);
+
+            // Ensure user exists in our database
+            await ensureUserInDatabase(result.user);
+
+            navigate('/app/dashboard');
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const handleEmailPasswordSignIn = async (e: React.FormEvent) => {
         e.preventDefault();
+        setIsLoading(true);
+        setError(null);
+
         try {
-            await signInWithEmailAndPassword(auth, email, password);
+            const result = await signInWithEmailAndPassword(auth, email, password);
+
+            // Ensure user exists in our database
+            await ensureUserInDatabase(result.user);
+
             navigate('/app/dashboard');
         } catch (err: any) {
             setError(err.message);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -42,10 +81,11 @@ const Login: React.FC = () => {
 
                 <button
                     onClick={handleGoogleSignIn}
-                    className="flex w-full items-center justify-center gap-3 border border-gray-300 rounded-md py-3 text-gray-700 hover:bg-gray-50 transition mb-6"
+                    disabled={isLoading}
+                    className="flex w-full items-center justify-center gap-3 border border-gray-300 rounded-md py-3 text-gray-700 hover:bg-gray-50 transition mb-6 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <GoogleIcon />
-                    Sign in with Google
+                    {isLoading ? 'Signing in...' : 'Sign in with Google'}
                 </button>
 
                 <div className="flex items-center my-6">
@@ -66,7 +106,8 @@ const Login: React.FC = () => {
                             placeholder="you@example.com"
                             value={email}
                             onChange={e => setEmail(e.target.value)}
-                            className="mt-1 w-full rounded-md border border-gray-300 px-4 py-3 focus:border-green-600 focus:ring-2 focus:ring-green-600 focus:outline-none transition"
+                            disabled={isLoading}
+                            className="mt-1 w-full rounded-md border border-gray-300 px-4 py-3 focus:border-green-600 focus:ring-2 focus:ring-green-600 focus:outline-none transition disabled:opacity-50"
                         />
                     </div>
 
@@ -81,20 +122,22 @@ const Login: React.FC = () => {
                             placeholder="********"
                             value={password}
                             onChange={e => setPassword(e.target.value)}
-                            className="mt-1 w-full rounded-md border border-gray-300 px-4 py-3 focus:border-green-600 focus:ring-2 focus:ring-green-600 focus:outline-none transition"
+                            disabled={isLoading}
+                            className="mt-1 w-full rounded-md border border-gray-300 px-4 py-3 focus:border-green-600 focus:ring-2 focus:ring-green-600 focus:outline-none transition disabled:opacity-50"
                         />
                     </div>
 
                     <button
                         type="submit"
-                        className="w-full bg-green-600 text-white py-3 rounded-md font-semibold hover:bg-green-700 transition"
+                        disabled={isLoading}
+                        className="w-full bg-green-600 text-white py-3 rounded-md font-semibold hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        Sign In
+                        {isLoading ? 'Signing in...' : 'Sign In'}
                     </button>
                 </form>
 
                 <p className="text-center text-gray-600 mt-6 text-sm">
-                    Don’t have an account?{' '}
+                    Don't have an account?{' '}
                     <Link to="/signup" className="text-green-600 font-medium hover:underline">
                         Create one
                     </Link>

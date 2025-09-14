@@ -1,8 +1,26 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useUser } from '../context/UserContext';
+import { useUserProfile, useUpdatePermissions } from '../api/hooks/useUserApi';
+
+interface PermissionToggles {
+    assets: boolean;
+    liabilities: boolean;
+    transactions: boolean;
+    retirementBalance: boolean;
+    creditScore: boolean;
+    investments: boolean;
+}
 
 const ManageProfile: React.FC = () => {
-    const [toggles, setToggles] = useState({
+    useUser();
+
+    // Fetch user profile data (includes permissions)
+    const { data: userProfile, isLoading, error } = useUserProfile();
+    const updatePermissionsMutation = useUpdatePermissions();
+
+    // Local toggle state
+    const [toggles, setToggles] = useState<PermissionToggles>({
         assets: true,
         liabilities: true,
         transactions: false,
@@ -11,19 +29,85 @@ const ManageProfile: React.FC = () => {
         investments: false
     });
 
-    const handleToggle = (key: keyof typeof toggles) => {
+    // Initialize toggles with backend permission data
+    useEffect(() => {
+        if (userProfile?.permissions) {
+            setToggles({
+                assets: userProfile.permissions.perm_assets ?? true,
+                liabilities: userProfile.permissions.perm_liabilities ?? true,
+                transactions: userProfile.permissions.perm_transactions ?? false,
+                retirementBalance: userProfile.permissions.perm_epf_balance ?? false,
+                creditScore: userProfile.permissions.perm_credit_score ?? true,
+                investments: userProfile.permissions.perm_investments ?? false,
+            });
+        }
+    }, [userProfile]);
+
+    const handleToggle = (key: keyof PermissionToggles) => {
         setToggles(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
     const handleCancel = () => {
-        // Reset to initial state or navigate back
-        console.log('Cancel clicked');
+        // Reset toggles to backend state
+        if (userProfile?.permissions) {
+            setToggles({
+                assets: userProfile.permissions.perm_assets ?? true,
+                liabilities: userProfile.permissions.perm_liabilities ?? true,
+                transactions: userProfile.permissions.perm_transactions ?? false,
+                retirementBalance: userProfile.permissions.perm_epf_balance ?? false,
+                creditScore: userProfile.permissions.perm_credit_score ?? true,
+                investments: userProfile.permissions.perm_investments ?? false,
+            });
+        }
     };
 
-    const handleSaveChanges = () => {
-        // Save the toggle states
-        console.log('Save changes:', toggles);
+    const handleSaveChanges = async () => {
+        try {
+            // Map UI toggles to API permission fields
+            await updatePermissionsMutation.mutateAsync({
+                perm_assets: toggles.assets,
+                perm_liabilities: toggles.liabilities,
+                perm_transactions: toggles.transactions,
+                perm_epf_balance: toggles.retirementBalance,
+                perm_credit_score: toggles.creditScore,
+                perm_investments: toggles.investments,
+            });
+
+            alert('AI access permissions updated successfully!');
+        } catch (error) {
+            console.error('Error updating permissions:', error);
+            alert('Failed to update permissions. Please try again.');
+        }
     };
+
+    // Loading state
+    if (isLoading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+                    <p className="mt-4 text-gray-600">Loading permissions...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Error state
+    if (error) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                <div className="text-center">
+                    <p className="text-red-600">Error loading permissions: {error.message}</p>
+                    <button
+                        onClick={() => window.location.reload()}
+                        className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+                    >
+                        Retry
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div
@@ -47,10 +131,9 @@ const ManageProfile: React.FC = () => {
                     <nav className="flex items-center gap-6"></nav>
                     <div className="flex items-center gap-4">
                         <Link to="/app/profile">
-                            <div
-                                className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10"
-                                style={{backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuCLH4pL0o-vvB6NF0emfn1yBO_00bt5t446EKjljpjx_xOQ4EhfMi1Y2KZBe1VmC8txkaHSnW4LmN_qgtgt6P_GSQVcZ4KDDSDBlKvuQgdKTAu7_56ALQ2qNvBgbMbAmnDaWeG7f8Twiaj9C66YNRBP1SWxsYzJ09WzvhSl0ARYRKRaeZHBX6jEoTwmoRDACDWNCuFWZH-EpumFIKKZQAuXPk86uXVzRnA7DBuLwvz6AhhXjsFTYxHrrx1HcEZcN61_9kf_RXQUva49")'}}
-                            ></div>
+                            <div className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center font-semibold">
+                                {userProfile?.name?.charAt(0)?.toUpperCase() || 'U'}
+                            </div>
                         </Link>
                     </div>
                 </header>
@@ -61,128 +144,86 @@ const ManageProfile: React.FC = () => {
                         <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
                             {/* Header Section */}
                             <div className="border-b border-gray-200 p-6">
-                                <h1 className="text-2xl font-bold tracking-tight text-gray-900">Manage Data Access</h1>
-                                <p className="mt-2 text-sm text-gray-500">Control which financial data categories our application can access. Your privacy is important to us.</p>
+                                <h1 className="text-2xl font-bold tracking-tight text-gray-900">Manage AI Data Access</h1>
+                                <p className="mt-2 text-sm text-gray-500">Control which financial data categories our AI assistant can access. Your privacy is important to us.</p>
                             </div>
+
+                            {/* Show loading state for mutations */}
+                            {updatePermissionsMutation.isPending && (
+                                <div className="p-4 bg-blue-100 text-blue-700 border-b border-gray-200">
+                                    Updating permissions...
+                                </div>
+                            )}
+
+                            {/* Show success message */}
+                            {updatePermissionsMutation.isSuccess && (
+                                <div className="p-4 bg-green-100 text-green-700 border-b border-gray-200">
+                                    AI permissions updated successfully!
+                                </div>
+                            )}
 
                             {/* Toggle Sections */}
                             <div className="divide-y divide-gray-200">
-                                {/* Assets */}
-                                <div className="flex items-center justify-between gap-4 p-6">
-                                    <div className="flex flex-col">
-                                        <p className="text-base font-medium text-gray-900">Assets</p>
-                                        <p className="text-sm text-gray-500">Access to your assets like bank accounts, properties, and other holdings.</p>
+                                {Object.entries({
+                                    assets: {
+                                        title: 'Assets',
+                                        desc: 'Access to your assets like bank accounts, properties, and other holdings.'
+                                    },
+                                    liabilities: {
+                                        title: 'Liabilities',
+                                        desc: 'Access to your liabilities such as loans, credit card debts, and other obligations.'
+                                    },
+                                    transactions: {
+                                        title: 'Transactions',
+                                        desc: 'Access to your transaction history, including deposits, withdrawals, and purchases.'
+                                    },
+                                    retirementBalance: {
+                                        title: 'Retirement Balance (EPF)',
+                                        desc: 'Access to your retirement savings balance, including contributions and returns.'
+                                    },
+                                    creditScore: {
+                                        title: 'Credit Score',
+                                        desc: 'Access to your credit score and credit report details.'
+                                    },
+                                    investments: {
+                                        title: 'Investments',
+                                        desc: 'Access to your investment portfolio, including stocks, bonds, and other investments.'
+                                    }
+                                }).map(([key, config]) => (
+                                    <div key={key} className="flex items-center justify-between gap-4 p-6">
+                                        <div className="flex flex-col">
+                                            <p className="text-base font-medium text-gray-900">{config.title}</p>
+                                            <p className="text-sm text-gray-500">{config.desc}</p>
+                                        </div>
+                                        <label className="relative inline-flex cursor-pointer items-center">
+                                            <input
+                                                type="checkbox"
+                                                className="peer sr-only"
+                                                checked={toggles[key as keyof PermissionToggles]}
+                                                onChange={() => handleToggle(key as keyof PermissionToggles)}
+                                                disabled={updatePermissionsMutation.isPending}
+                                            />
+                                            <div className="peer h-6 w-11 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-[#13a4ec] peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 peer-disabled:opacity-50"></div>
+                                        </label>
                                     </div>
-                                    <label className="relative inline-flex cursor-pointer items-center">
-                                        <input
-                                            type="checkbox"
-                                            className="peer sr-only"
-                                            checked={toggles.assets}
-                                            onChange={() => handleToggle('assets')}
-                                        />
-                                        <div className="peer h-6 w-11 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-[#13a4ec] peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300"></div>
-                                    </label>
-                                </div>
-
-                                {/* Liabilities */}
-                                <div className="flex items-center justify-between gap-4 p-6">
-                                    <div className="flex flex-col">
-                                        <p className="text-base font-medium text-gray-900">Liabilities</p>
-                                        <p className="text-sm text-gray-500">Access to your liabilities such as loans, credit card debts, and other obligations.</p>
-                                    </div>
-                                    <label className="relative inline-flex cursor-pointer items-center">
-                                        <input
-                                            type="checkbox"
-                                            className="peer sr-only"
-                                            checked={toggles.liabilities}
-                                            onChange={() => handleToggle('liabilities')}
-                                        />
-                                        <div className="peer h-6 w-11 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-[#13a4ec] peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300"></div>
-                                    </label>
-                                </div>
-
-                                {/* Transactions */}
-                                <div className="flex items-center justify-between gap-4 p-6">
-                                    <div className="flex flex-col">
-                                        <p className="text-base font-medium text-gray-900">Transactions</p>
-                                        <p className="text-sm text-gray-500">Access to your transaction history, including deposits, withdrawals, and purchases.</p>
-                                    </div>
-                                    <label className="relative inline-flex cursor-pointer items-center">
-                                        <input
-                                            type="checkbox"
-                                            className="peer sr-only"
-                                            checked={toggles.transactions}
-                                            onChange={() => handleToggle('transactions')}
-                                        />
-                                        <div className="peer h-6 w-11 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-[#13a4ec] peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300"></div>
-                                    </label>
-                                </div>
-
-                                {/* Retirement Balance */}
-                                <div className="flex items-center justify-between gap-4 p-6">
-                                    <div className="flex flex-col">
-                                        <p className="text-base font-medium text-gray-900">Retirement Balance</p>
-                                        <p className="text-sm text-gray-500">Access to your retirement savings balance, including contributions and returns.</p>
-                                    </div>
-                                    <label className="relative inline-flex cursor-pointer items-center">
-                                        <input
-                                            type="checkbox"
-                                            className="peer sr-only"
-                                            checked={toggles.retirementBalance}
-                                            onChange={() => handleToggle('retirementBalance')}
-                                        />
-                                        <div className="peer h-6 w-11 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-[#13a4ec] peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300"></div>
-                                    </label>
-                                </div>
-
-                                {/* Credit Score */}
-                                <div className="flex items-center justify-between gap-4 p-6">
-                                    <div className="flex flex-col">
-                                        <p className="text-base font-medium text-gray-900">Credit Score</p>
-                                        <p className="text-sm text-gray-500">Access to your credit score and credit report details.</p>
-                                    </div>
-                                    <label className="relative inline-flex cursor-pointer items-center">
-                                        <input
-                                            type="checkbox"
-                                            className="peer sr-only"
-                                            checked={toggles.creditScore}
-                                            onChange={() => handleToggle('creditScore')}
-                                        />
-                                        <div className="peer h-6 w-11 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-[#13a4ec] peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300"></div>
-                                    </label>
-                                </div>
-
-                                {/* Investments */}
-                                <div className="flex items-center justify-between gap-4 p-6">
-                                    <div className="flex flex-col">
-                                        <p className="text-base font-medium text-gray-900">Investments</p>
-                                        <p className="text-sm text-gray-500">Access to your investment portfolio, including stocks, bonds, and other investments.</p>
-                                    </div>
-                                    <label className="relative inline-flex cursor-pointer items-center">
-                                        <input
-                                            type="checkbox"
-                                            className="peer sr-only"
-                                            checked={toggles.investments}
-                                            onChange={() => handleToggle('investments')}
-                                        />
-                                        <div className="peer h-6 w-11 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-[#13a4ec] peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300"></div>
-                                    </label>
-                                </div>
+                                ))}
                             </div>
 
                             {/* Action Buttons */}
                             <div className="flex items-center justify-end gap-3 bg-gray-50 p-6">
                                 <button
                                     onClick={handleCancel}
-                                    className="rounded-md bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                                    className="rounded-md bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
+                                    disabled={updatePermissionsMutation.isPending}
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     onClick={handleSaveChanges}
-                                    className="inline-flex justify-center rounded-md border border-transparent bg-[#13a4ec] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                                    disabled={updatePermissionsMutation.isPending}
+                                    className="inline-flex justify-center rounded-md border border-transparent bg-[#13a4ec] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    Save Changes
+                                    {updatePermissionsMutation.isPending ? 'Saving...' : 'Save Changes'}
                                 </button>
                             </div>
                         </div>

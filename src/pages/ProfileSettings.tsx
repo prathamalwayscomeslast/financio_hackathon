@@ -1,10 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useUser } from '../context/UserContext';
+import { useUserProfile, useUpdateProfile } from '../api/hooks/useUserApi';
+
+interface ProfileFormData {
+    name: string;
+    phone: string;
+    bio: string;
+    password: string;
+    confirmPassword: string;
+}
 
 const ProfileSettings: React.FC = () => {
-    const [formData, setFormData] = useState({
+    useUser();
+
+    // API hooks - using your existing APIs only
+    const { data: userProfile, isLoading, error } = useUserProfile();
+    const updateProfileMutation = useUpdateProfile();
+
+    // Form state
+    const [formData, setFormData] = useState<ProfileFormData>({
         name: '',
-        email: '',
         phone: '',
         bio: '',
         password: '',
@@ -13,38 +29,94 @@ const ProfileSettings: React.FC = () => {
 
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-    const [notifications, setNotifications] = useState({
-        emailNotifications: true,
-        smsNotifications: false,
-        pushNotifications: true
-    });
-    const [twoFactorAuth, setTwoFactorAuth] = useState(false);
+
+    // Initialize form with profile data
+    useEffect(() => {
+        if (userProfile) {
+            setFormData({
+                name: userProfile.name || '',
+                phone: '',
+                bio: '',
+                password: '',
+                confirmPassword: ''
+            });
+        }
+    }, [userProfile]);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleNotificationChange = (key: keyof typeof notifications) => {
-        setNotifications(prev => ({ ...prev, [key]: !prev[key] }));
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        console.log('Form submitted:', { formData, notifications, twoFactorAuth });
+
+        // Validate passwords match
+        if (formData.password && formData.password !== formData.confirmPassword) {
+            alert('Passwords do not match');
+            return;
+        }
+
+        try {
+            // Update profile using your existing API
+            const profileUpdate: any = {
+                name: formData.name,
+                phone: formData.phone,
+                bio: formData.bio,
+            };
+
+            await updateProfileMutation.mutateAsync(profileUpdate);
+
+            // Clear password fields
+            setFormData(prev => ({ ...prev, password: '', confirmPassword: '' }));
+
+            alert('Profile updated successfully!');
+        } catch (error) {
+            console.error('Error updating profile:', error);
+            alert('Error updating profile. Please try again.');
+        }
     };
 
     const handleCancel = () => {
-        // Reset form or navigate back
-        setFormData({
-            name: '',
-            email: '',
-            phone: '',
-            bio: '',
-            password: '',
-            confirmPassword: ''
-        });
+        if (userProfile) {
+            setFormData({
+                name: userProfile.name || '',
+                phone: '',
+                bio: '',
+                password: '',
+                confirmPassword: ''
+            });
+        }
     };
+
+    // Loading state
+    if (isLoading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-green-600"></div>
+                    <p className="mt-4 text-gray-600">Loading profile...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Error state
+    if (error) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                <div className="text-center">
+                    <p className="text-red-600">Error loading profile: {error.message}</p>
+                    <button
+                        onClick={() => window.location.reload()}
+                        className="mt-4 bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700"
+                    >
+                        Retry
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div
@@ -65,13 +137,11 @@ const ProfileSettings: React.FC = () => {
                             <h2 className="text-xl font-bold tracking-tight">Financio</h2>
                         </div>
                     </Link>
-                    <nav className="flex items-center gap-6 text-sm font-medium text-gray-600"></nav>
                     <div className="flex items-center gap-4">
                         <Link to="/app/profile">
-                            <div
-                                className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10"
-                                style={{backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuCl95m0P0QQ-h6nK1f_XnSWJ2qA9zf-SXuTcIKzgc2TBbbXI4mjOKlUE_K-vP1HEymCBLP4KXADARi8tjXemyhCEoEhxBNiCOu96FrtRamzGPAKMHv62XqMTxe9c1eS2Qz8eXcnfR9DN2l-SnV7Yi5kSful-IKqPxLvMYhJsc8oDzF3GW6FmXzBYilxooPXXBBaFsXuJFizBkwA7snBS6xLb2sUPdQzZAJKWNos0MqxVZ7miTIz1qMdzfro7e3keHy74a8-z-cChOK1")'}}
-                            ></div>
+                            <div className="w-10 h-10 bg-green-600 text-white rounded-full flex items-center justify-center font-semibold">
+                                {userProfile?.name?.charAt(0)?.toUpperCase() || 'U'}
+                            </div>
                         </Link>
                     </div>
                 </header>
@@ -81,30 +151,27 @@ const ProfileSettings: React.FC = () => {
                     <div className="mx-auto max-w-2xl">
                         <div className="mb-8">
                             <h1 className="text-3xl font-bold text-gray-900">Profile Settings</h1>
-                            <p className="text-gray-500 mt-1">Manage your personal information and account preferences.</p>
+                            <p className="text-gray-500 mt-1">Manage your personal information.</p>
                         </div>
+
+                        {/* Show loading states for mutations */}
+                        {updateProfileMutation.isPending && (
+                            <div className="mb-4 p-3 bg-blue-100 text-blue-700 rounded-md">
+                                Updating profile...
+                            </div>
+                        )}
+
+                        {/* Show success message */}
+                        {updateProfileMutation.isSuccess && (
+                            <div className="mb-4 p-3 bg-green-100 text-green-700 rounded-md">
+                                Profile updated successfully!
+                            </div>
+                        )}
 
                         <div className="space-y-8">
                             {/* Profile Information */}
                             <div className="bg-white p-8 rounded-lg shadow-sm border border-gray-200">
                                 <h2 className="text-xl font-semibold text-gray-900 mb-6">Personal Information</h2>
-
-                                {/* Profile Picture */}
-                                <div className="mb-6">
-                                    <label className="block text-sm font-medium text-gray-700 pb-3">Profile Picture</label>
-                                    <div className="flex items-center gap-6">
-                                        <div
-                                            className="w-20 h-20 rounded-full bg-cover bg-center border-2 border-gray-200"
-                                            style={{backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuCl95m0P0QQ-h6nK1f_XnSWJ2qA9zf-SXuTcIKzgc2TBbbXI4mjOKlUE_K-vP1HEymCBLP4KXADARi8tjXemyhCEoEhxBNiCOu96FrtRamzGPAKMHv62XqMTxe9c1eS2Qz8eXcnfR9DN2l-SnV7Yi5kSful-IKqPxLvMYhJsc8oDzF3GW6FmXzBYilxooPXXBBaFsXuJFizBkwA7snBS6xLb2sUPdQzZAJKWNos0MqxVZ7miTIz1qMdzfro7e3keHy74a8-z-cChOK1")'}}
-                                        ></div>
-                                        <div>
-                                            <button className="bg-[var(--primary-color)] text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-opacity-90 transition-colors">
-                                                Change Picture
-                                            </button>
-                                            <p className="text-xs text-gray-500 mt-2">JPG, GIF or PNG. Max size of 2MB.</p>
-                                        </div>
-                                    </div>
-                                </div>
 
                                 <form onSubmit={handleSubmit} className="space-y-6">
                                     {/* Name */}
@@ -118,21 +185,24 @@ const ProfileSettings: React.FC = () => {
                                             type="text"
                                             value={formData.name}
                                             onChange={handleInputChange}
+                                            disabled={updateProfileMutation.isPending}
                                         />
                                     </div>
 
-                                    {/* Email */}
+                                    {/* Email - Read-only from Firebase */}
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 pb-1.5" htmlFor="email">Email</label>
                                         <input
-                                            className="form-input block w-full rounded-md border-gray-300 shadow-sm focus:border-[var(--primary-color)] focus:ring-[var(--primary-color)] sm:text-sm h-11 px-4"
+                                            className="form-input block w-full rounded-md border-gray-300 bg-gray-50 shadow-sm sm:text-sm h-11 px-4"
                                             id="email"
                                             name="email"
                                             placeholder="Enter your email"
                                             type="email"
-                                            value={formData.email}
-                                            onChange={handleInputChange}
+                                            value={userProfile?.email || ''}
+                                            readOnly
+                                            disabled
                                         />
+                                        <p className="text-xs text-gray-500 mt-1">Email cannot be changed here. Contact support if needed.</p>
                                     </div>
 
                                     {/* Phone */}
@@ -146,6 +216,7 @@ const ProfileSettings: React.FC = () => {
                                             type="tel"
                                             value={formData.phone}
                                             onChange={handleInputChange}
+                                            disabled={updateProfileMutation.isPending}
                                         />
                                     </div>
 
@@ -160,6 +231,7 @@ const ProfileSettings: React.FC = () => {
                                             rows={4}
                                             value={formData.bio}
                                             onChange={handleInputChange}
+                                            disabled={updateProfileMutation.isPending}
                                         />
                                     </div>
 
@@ -171,130 +243,74 @@ const ProfileSettings: React.FC = () => {
                                                 className="form-input block w-full rounded-md border-gray-300 shadow-sm focus:border-[var(--primary-color)] focus:ring-[var(--primary-color)] sm:text-sm h-11 px-4 pr-10"
                                                 id="password"
                                                 name="password"
-                                                placeholder="Enter new password"
+                                                placeholder="Enter new password (optional)"
                                                 type={showPassword ? "text" : "password"}
                                                 value={formData.password}
                                                 onChange={handleInputChange}
+                                                disabled={updateProfileMutation.isPending}
                                             />
                                             <button
                                                 className="absolute inset-y-0 right-0 flex items-center pr-3"
                                                 type="button"
                                                 onClick={() => setShowPassword(!showPassword)}
                                             >
-                                                <span className="material-symbols-outlined text-xl text-gray-400">
-                                                    {showPassword ? 'visibility' : 'visibility_off'}
+                                                <span className="text-xl text-gray-400">
+                                                    {showPassword ? '👁️' : '👁️‍🗨️'}
                                                 </span>
                                             </button>
                                         </div>
+                                        <p className="text-xs text-gray-500 mt-1">Leave blank to keep current password</p>
                                     </div>
 
                                     {/* Confirm Password */}
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 pb-1.5" htmlFor="confirmPassword">Confirm Password</label>
-                                        <div className="relative">
-                                            <input
-                                                className="form-input block w-full rounded-md border-gray-300 shadow-sm focus:border-[var(--primary-color)] focus:ring-[var(--primary-color)] sm:text-sm h-11 px-4 pr-10"
-                                                id="confirmPassword"
-                                                name="confirmPassword"
-                                                placeholder="Confirm new password"
-                                                type={showConfirmPassword ? "text" : "password"}
-                                                value={formData.confirmPassword}
-                                                onChange={handleInputChange}
-                                            />
-                                            <button
-                                                className="absolute inset-y-0 right-0 flex items-center pr-3"
-                                                type="button"
-                                                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                            >
-                                                <span className="material-symbols-outlined text-xl text-gray-400">
-                                                    {showConfirmPassword ? 'visibility' : 'visibility_off'}
-                                                </span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </form>
-                            </div>
-
-                            {/* Notification Preferences */}
-                            <div className="bg-white p-8 rounded-lg shadow-sm border border-gray-200">
-                                <h2 className="text-xl font-semibold text-gray-900 mb-6">Notification Preferences</h2>
-                                <div className="space-y-4">
-                                    {Object.entries({
-                                        emailNotifications: 'Email Notifications',
-                                        smsNotifications: 'SMS Notifications',
-                                        pushNotifications: 'Push Notifications'
-                                    }).map(([key, label]) => (
-                                        <div key={key} className="flex items-center justify-between">
-                                            <div>
-                                                <p className="text-sm font-medium text-gray-700">{label}</p>
-                                                <p className="text-xs text-gray-500">Receive notifications via {label.split(' ')[0].toLowerCase()}</p>
-                                            </div>
-                                            <label className="relative inline-flex cursor-pointer items-center">
-                                                <input
-                                                    type="checkbox"
-                                                    className="peer sr-only"
-                                                    checked={notifications[key as keyof typeof notifications]}
-                                                    onChange={() => handleNotificationChange(key as keyof typeof notifications)}
-                                                />
-                                                <div className="peer h-6 w-11 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-[var(--primary-color)] peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300"></div>
-                                            </label>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Security Settings */}
-                            <div className="bg-white p-8 rounded-lg shadow-sm border border-gray-200">
-                                <h2 className="text-xl font-semibold text-gray-900 mb-6">Security Settings</h2>
-                                <div className="space-y-4">
-                                    {/* Two-Factor Authentication */}
-                                    <div className="flex items-center justify-between">
+                                    {formData.password && (
                                         <div>
-                                            <p className="text-sm font-medium text-gray-700">Two-Factor Authentication</p>
-                                            <p className="text-xs text-gray-500">Add an extra layer of security to your account</p>
+                                            <label className="block text-sm font-medium text-gray-700 pb-1.5" htmlFor="confirmPassword">Confirm Password</label>
+                                            <div className="relative">
+                                                <input
+                                                    className="form-input block w-full rounded-md border-gray-300 shadow-sm focus:border-[var(--primary-color)] focus:ring-[var(--primary-color)] sm:text-sm h-11 px-4 pr-10"
+                                                    id="confirmPassword"
+                                                    name="confirmPassword"
+                                                    placeholder="Confirm new password"
+                                                    type={showConfirmPassword ? "text" : "password"}
+                                                    value={formData.confirmPassword}
+                                                    onChange={handleInputChange}
+                                                    disabled={updateProfileMutation.isPending}
+                                                />
+                                                <button
+                                                    className="absolute inset-y-0 right-0 flex items-center pr-3"
+                                                    type="button"
+                                                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                                >
+                                                    <span className="text-xl text-gray-400">
+                                                        {showConfirmPassword ? '👁️' : '👁️‍🗨️'}
+                                                    </span>
+                                                </button>
+                                            </div>
                                         </div>
-                                        <label className="relative inline-flex cursor-pointer items-center">
-                                            <input
-                                                type="checkbox"
-                                                className="peer sr-only"
-                                                checked={twoFactorAuth}
-                                                onChange={() => setTwoFactorAuth(!twoFactorAuth)}
-                                            />
-                                            <div className="peer h-6 w-11 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-[var(--primary-color)] peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300"></div>
-                                        </label>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Danger Zone */}
-                            <div className="bg-white p-8 rounded-lg shadow-sm border border-red-200">
-                                <h2 className="text-xl font-semibold text-red-900 mb-6">Danger Zone</h2>
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <p className="text-sm font-medium text-red-700">Delete Account</p>
-                                        <p className="text-xs text-red-500">Permanently delete your account and all data</p>
-                                    </div>
-                                    <button className="bg-red-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-red-700 transition-colors">
-                                        Delete Account
-                                    </button>
-                                </div>
+                                    )}
+                                </form>
                             </div>
 
                             {/* Action Buttons */}
                             <div className="pt-4 flex justify-end gap-3">
                                 <button
                                     onClick={handleCancel}
-                                    className="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-md h-10 px-4 bg-gray-100 text-gray-700 text-sm font-semibold leading-normal tracking-tight hover:bg-gray-200 transition-colors"
+                                    className="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-md h-10 px-4 bg-gray-100 text-gray-700 text-sm font-semibold leading-normal tracking-tight hover:bg-gray-200 transition-colors disabled:opacity-50"
                                     type="button"
+                                    disabled={updateProfileMutation.isPending}
                                 >
                                     <span className="truncate">Cancel</span>
                                 </button>
                                 <button
                                     onClick={handleSubmit}
-                                    className="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-md h-10 px-4 bg-[var(--primary-color)] text-white text-sm font-semibold leading-normal tracking-tight hover:bg-opacity-90 transition-colors"
+                                    className="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-md h-10 px-4 bg-[var(--primary-color)] text-white text-sm font-semibold leading-normal tracking-tight hover:bg-opacity-90 transition-colors disabled:opacity-50"
                                     type="submit"
+                                    disabled={updateProfileMutation.isPending}
                                 >
-                                    <span className="truncate">Update Profile</span>
+                                    <span className="truncate">
+                                        {updateProfileMutation.isPending ? 'Updating...' : 'Update Profile'}
+                                    </span>
                                 </button>
                             </div>
                         </div>

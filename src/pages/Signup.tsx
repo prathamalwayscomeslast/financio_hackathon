@@ -1,37 +1,82 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { updateProfile } from 'firebase/auth';
 import {
     auth,
     googleProvider,
     signInWithPopup,
     createUserWithEmailAndPassword,
 } from '../firebase';
+import { useCreateUser } from '../api/hooks/useUserApi';
 
 const Signup: React.FC = () => {
     const [fullname, setFullname] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
 
-    const handleGoogleSignUp = async () => {
+    // Hook for creating user in database
+    const createUserMutation = useCreateUser();
+
+    // Helper function to create user in database
+    const ensureUserInDatabase = async (firebaseUser: any, displayName?: string) => {
         try {
-            await signInWithPopup(auth, googleProvider);
+            await createUserMutation.mutateAsync({
+                user_id: firebaseUser.uid,
+                name: displayName || firebaseUser.displayName || firebaseUser.email || 'User',
+            });
+        } catch (error: any) {
+            // User might already exist - that's fine for existing users signing up via different method
+            if (error.response?.status !== 409) {
+                throw error; // Re-throw if it's not a "user already exists" error
+            }
+        }
+    };
+
+    const handleGoogleSignUp = async () => {
+        setIsLoading(true);
+        setError(null);
+
+        try {
+            const result = await signInWithPopup(auth, googleProvider);
+
+            // Create user in database
+            await ensureUserInDatabase(result.user);
+
             navigate('/app/dashboard');
         } catch (err: any) {
             setError(err.message);
+        } finally {
+            setIsLoading(false);
         }
     };
 
     const handleEmailSignUp = async (e: React.FormEvent) => {
         e.preventDefault();
+        setIsLoading(true);
         setError(null);
+
         try {
-            await createUserWithEmailAndPassword(auth, email, password);
-            // Optionally update user profile with fullname here...
+            // Create user with Firebase
+            const result = await createUserWithEmailAndPassword(auth, email, password);
+
+            // Update Firebase profile with full name
+            if (fullname.trim()) {
+                await updateProfile(result.user, {
+                    displayName: fullname.trim()
+                });
+            }
+
+            // Create user in database
+            await ensureUserInDatabase(result.user, fullname.trim());
+
             navigate('/app/dashboard');
         } catch (err: any) {
             setError(err.message);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -50,10 +95,11 @@ const Signup: React.FC = () => {
 
                 <button
                     onClick={handleGoogleSignUp}
-                    className="flex w-full items-center justify-center gap-3 border border-gray-300 rounded-md py-3 text-gray-700 hover:bg-gray-50 transition mb-6"
+                    disabled={isLoading}
+                    className="flex w-full items-center justify-center gap-3 border border-gray-300 rounded-md py-3 text-gray-700 hover:bg-gray-50 transition mb-6 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <GoogleIcon />
-                    Sign up with Google
+                    {isLoading ? 'Creating account...' : 'Sign up with Google'}
                 </button>
 
                 <div className="flex items-center my-6">
@@ -74,7 +120,8 @@ const Signup: React.FC = () => {
                             placeholder="John Doe"
                             value={fullname}
                             onChange={e => setFullname(e.target.value)}
-                            className="mt-1 w-full rounded-md border border-gray-300 px-4 py-3 focus:border-green-600 focus:ring-2 focus:ring-green-600 focus:outline-none transition"
+                            disabled={isLoading}
+                            className="mt-1 w-full rounded-md border border-gray-300 px-4 py-3 focus:border-green-600 focus:ring-2 focus:ring-green-600 focus:outline-none transition disabled:opacity-50"
                         />
                     </div>
 
@@ -89,7 +136,8 @@ const Signup: React.FC = () => {
                             placeholder="you@example.com"
                             value={email}
                             onChange={e => setEmail(e.target.value)}
-                            className="mt-1 w-full rounded-md border border-gray-300 px-4 py-3 focus:border-green-600 focus:ring-2 focus:ring-green-600 focus:outline-none transition"
+                            disabled={isLoading}
+                            className="mt-1 w-full rounded-md border border-gray-300 px-4 py-3 focus:border-green-600 focus:ring-2 focus:ring-green-600 focus:outline-none transition disabled:opacity-50"
                         />
                     </div>
 
@@ -104,17 +152,26 @@ const Signup: React.FC = () => {
                             placeholder="********"
                             value={password}
                             onChange={e => setPassword(e.target.value)}
-                            className="mt-1 w-full rounded-md border border-gray-300 px-4 py-3 focus:border-green-600 focus:ring-2 focus:ring-green-600 focus:outline-none transition"
+                            disabled={isLoading}
+                            className="mt-1 w-full rounded-md border border-gray-300 px-4 py-3 focus:border-green-600 focus:ring-2 focus:ring-green-600 focus:outline-none transition disabled:opacity-50"
                         />
                     </div>
 
                     <button
                         type="submit"
-                        className="w-full bg-green-600 text-white py-3 rounded-md font-semibold hover:bg-green-700 transition"
+                        disabled={isLoading}
+                        className="w-full bg-green-600 text-white py-3 rounded-md font-semibold hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        Create Account
+                        {isLoading ? 'Creating account...' : 'Create Account'}
                     </button>
                 </form>
+
+                {/* Show additional status for database operations */}
+                {createUserMutation.isPending && (
+                    <div className="mt-4 p-3 bg-blue-100 text-blue-700 rounded-md text-center">
+                        Setting up your account...
+                    </div>
+                )}
 
                 <p className="text-center text-gray-600 mt-6 text-sm">
                     Already have an account?{' '}

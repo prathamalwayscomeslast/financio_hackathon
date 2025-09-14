@@ -1,52 +1,80 @@
 import React from 'react';
-
-interface SummaryCard {
-    title: string;
-    value: string;
-    icon?: string;
-    change: string;
-    changeType: 'positive' | 'negative';
-    period: string;
-}
+import { useDashboardSummary } from '../../api/hooks/useDashboardApi';
 
 const SummaryCards: React.FC = () => {
-    const cards: SummaryCard[] = [
+    const { data, isLoading, error } = useDashboardSummary();
+
+    // Loading state
+    if (isLoading) {
+        return (
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 mb-8">
+                {[1, 2, 3, 4, 5].map(i => (
+                    <div key={i} className="summary-card animate-pulse">
+                        <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                        <div className="h-8 bg-gray-200 rounded w-1/2 mb-4"></div>
+                        <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+                    </div>
+                ))}
+            </div>
+        );
+    }
+
+    // Error state
+    if (error) {
+        return (
+            <div className="mb-8 p-4 bg-red-100 text-red-700 rounded-md">
+                Error loading dashboard summary. Please try again.
+            </div>
+        );
+    }
+
+    // No data state
+    if (!data) {
+        return (
+            <div className="mb-8 p-4 bg-yellow-100 text-yellow-700 rounded-md">
+                No financial data available. Add some transactions to see your summary.
+            </div>
+        );
+    }
+
+    // Build cards with real data
+    const cards = [
         {
             title: 'Total Assets',
-            value: '$125,000',
+            value: `$${data.total_assets.toLocaleString()}`,
             icon: 'trending_up',
             change: '+5%',
-            changeType: 'positive',
+            changeType: 'positive' as const,
             period: 'vs last month'
         },
         {
             title: 'Total Liabilities',
-            value: '$35,000',
+            value: `$${data.total_liabilities.toLocaleString()}`,
             icon: 'trending_down',
             change: '-2%',
-            changeType: 'negative',
+            changeType: 'negative' as const,
             period: 'vs last month'
         },
         {
             title: 'EPF Balance',
-            value: '$20,000',
+            value: `$${data.epf_balance.toLocaleString()}`,
             change: '+3%',
-            changeType: 'positive',
+            changeType: 'positive' as const,
             period: 'this quarter'
         },
         {
             title: 'Credit Score',
-            value: '750',
+            value: data.credit_score?.toString() || 'N/A',
             change: '+1%',
-            changeType: 'positive',
+            changeType: 'positive' as const,
             period: 'since last check'
         },
         {
             title: 'Investment Portfolio',
-            value: '$70,000',
+            value: `$${data.investment_portfolio.toLocaleString()}`,
             icon: 'show_chart',
             change: '+4%',
-            changeType: 'positive',
+            changeType: 'positive' as const,
             period: 'this month'
         }
     ];

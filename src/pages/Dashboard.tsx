@@ -1,13 +1,42 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useUser } from '../context/UserContext';
 import Header from '../components/layout/Header';
 import SummaryCards from '../components/dashboard/SummaryCards';
 import Charts from '../components/dashboard/Charts';
 import TransactionsTable from '../components/dashboard/TransactionsTable';
 import Chatbot from '../components/dashboard/Chatbot';
-import FormManager from "../components/dashboard/FormManager.tsx";
+import FormManager from "../components/dashboard/FormManager";
 
 const Dashboard: React.FC = () => {
+    const { user, isAuthenticated, loading } = useUser();
+
+    // Loading state
+    if (loading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+                    <p className="mt-4 text-gray-600">Loading your dashboard...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Not authenticated
+    if (!isAuthenticated) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                <div className="text-center">
+                    <p className="text-gray-600">Please sign in to view your dashboard.</p>
+                    <Link to="/login" className="mt-4 inline-block bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+                        Sign In
+                    </Link>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div
             className="flex h-screen flex-col bg-gray-50 text-gray-900"
@@ -18,14 +47,17 @@ const Dashboard: React.FC = () => {
                 <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
                     <div className="mb-8">
                         <h1 className="text-3xl font-bold text-[var(--text-primary)]">Dashboard</h1>
-                        <p className="text-gray-500 mt-1">Welcome back, here's your comprehensive financial overview.</p>
+                        <p className="text-gray-500 mt-1">
+                            Welcome back, {user?.displayName || user?.email}! Here's your comprehensive financial overview.
+                        </p>
                     </div>
 
                     <FormManager />
 
+                    {/* Dynamic Summary Cards */}
                     <SummaryCards />
 
-                    {/* FinAI Studio Section - NEW */}
+                    {/* FinAI Studio Section */}
                     <div className="mb-8">
                         <Link to="/app/ai-studio">
                             <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-8 text-white hover:from-blue-700 hover:to-purple-700 transition-all duration-300 transform hover:scale-[1.02] shadow-lg hover:shadow-xl">
@@ -61,8 +93,10 @@ const Dashboard: React.FC = () => {
                         <p className="text-gray-500">Actionable insights from your financial data.</p>
                     </div>
 
+                    {/* Dynamic Charts */}
                     <Charts />
 
+                    {/* Dynamic Transactions Table */}
                     <TransactionsTable />
                 </div>
             </main>
