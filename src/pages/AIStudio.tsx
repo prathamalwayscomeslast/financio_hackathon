@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-// import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import Header from '../components/layout/Header';
 
 interface Template {
@@ -13,6 +13,7 @@ interface Template {
 
 const AIStudio: React.FC = () => {
     const [selectedCategory, setSelectedCategory] = useState('all');
+    const navigate = useNavigate();
 
     const categories = [
         { id: 'all', name: 'All Templates', icon: 'apps' },
@@ -101,6 +102,24 @@ const AIStudio: React.FC = () => {
         'How to improve my credit score?'
     ];
 
+    // ✅ HANDLE TEMPLATE CLICK - Navigate to chat with prompt
+    const handleTemplateClick = (template: Template) => {
+        navigate('/app/chat', {
+            state: {
+                sendMessage: template.prompt
+            }
+        });
+    };
+
+    // ✅ HANDLE QUICK ACTION CLICK - Navigate to chat with question
+    const handleQuickActionClick = (question: string) => {
+        navigate('/app/chat', {
+            state: {
+                sendMessage: question
+            }
+        });
+    };
+
     return (
         <div
             className="flex h-screen flex-col bg-gray-50 text-gray-900"
@@ -131,6 +150,7 @@ const AIStudio: React.FC = () => {
                             {quickActions.map((question, index) => (
                                 <button
                                     key={index}
+                                    onClick={() => handleQuickActionClick(question)}
                                     className="bg-white p-4 rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all duration-200 text-left group"
                                 >
                                     <div className="flex items-center justify-between">
@@ -174,6 +194,7 @@ const AIStudio: React.FC = () => {
                         {filteredTemplates.map((template) => (
                             <div
                                 key={template.id}
+                                onClick={() => handleTemplateClick(template)}
                                 className="bg-white rounded-xl p-6 border border-gray-200 hover:border-blue-300 hover:shadow-lg transition-all duration-300 cursor-pointer group"
                             >
                                 <div className="flex items-center gap-4 mb-4">
@@ -212,19 +233,28 @@ const AIStudio: React.FC = () => {
                         <p className="text-gray-600 mb-6">
                             Have a specific financial question? Start a custom conversation with our AI assistant.
                         </p>
-                        <div className="flex gap-4">
+                        <form onSubmit={(e) => {
+                            e.preventDefault();
+                            const input = e.currentTarget.elements.namedItem('message') as HTMLInputElement;
+                            if (input.value.trim()) {
+                                handleQuickActionClick(input.value.trim());
+                                input.value = '';
+                            }
+                        }} className="flex gap-4">
                             <div className="flex-1 relative">
                                 <input
+                                    name="message"
                                     type="text"
                                     placeholder="Ask me anything about your finances..."
                                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none"
+                                    required
                                 />
                             </div>
-                            <button className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors flex items-center gap-2">
+                            <button type="submit" className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors flex items-center gap-2">
                                 <span>Start Chat</span>
                                 <span className="material-symbols-outlined">send</span>
                             </button>
-                        </div>
+                        </form>
                     </div>
                 </div>
             </main>

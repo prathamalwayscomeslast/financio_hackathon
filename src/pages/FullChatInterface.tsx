@@ -106,6 +106,31 @@ I have access to your real financial data and can provide specific insights abou
         }
     });
 
+    // ✅ AUTO-SEND MESSAGE FROM AI STUDIO
+    useEffect(() => {
+        if (location.state?.sendMessage && userId) {
+            console.log('🚀 Auto-sending template prompt:', location.state.sendMessage);
+
+            // Add user message to chat
+            const userMessage: Message = {
+                id: Date.now().toString(),
+                sender: 'user',
+                text: location.state.sendMessage,
+                timestamp: new Date()
+            };
+            setMessages(prev => [...prev, userMessage]);
+
+            // Send to AI immediately
+            chatMutation.mutate({
+                user_id: userId,
+                question: location.state.sendMessage
+            });
+
+            // Clear navigation state to prevent re-sending
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    }, [location.state?.sendMessage, userId]); // ✅ Clean dependencies
+
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
